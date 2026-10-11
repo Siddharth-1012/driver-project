@@ -72,6 +72,18 @@ function buildSand() {
     [0.78, 0.3, -0.7, 1.05, '#2a7fd4', '195,225,255'],
     [0.9, 0.75, 2.9, 0.8, '#e8a21b', '225,240,225'],
   ];
+  // 100 more, placed with a fixed seed so they stay put on resize
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const caps = ['#2a7fd4', '#d9382c', '#f2f2f2', '#3fae4a', '#e8a21b', '#8a4fc7'];
+  const tints = ['190,225,255', '215,240,230', '200,235,255', '180,240,200', '225,240,225'];
+  for (let i = 0; i < 100; i++) {
+    bottles.push([
+      rnd(), rnd(), rnd() * 6.28, 0.7 + rnd() * 0.5,
+      caps[(rnd() * caps.length) | 0], tints[(rnd() * tints.length) | 0],
+    ]);
+  }
+  bottles.sort((a, b) => a[1] - b[1]); // farther ones first, nearer ones overlap them
   const sc = Math.max(0.8, Math.min(1.5, H / 650));
   for (const [fx, fy, rot, size, cap, tint] of bottles) {
     drawBottle(s, fx * W, 30 + fy * (sandCanvas.height - 60), rot, size * sc, cap, tint);
