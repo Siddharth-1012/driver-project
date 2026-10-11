@@ -62,6 +62,60 @@ function buildSand() {
     s.fillStyle = Math.random() < 0.5 ? '#fff' : '#3a3820';
     s.fillRect(Math.random() * W, 20 + Math.random() * (sandCanvas.height - 20), 1.5, 1.5);
   }
+  s.globalAlpha = 1;
+  // plastic bottles lying on the sand: [x fraction, depth fraction, tilt, size, cap colour, plastic tint]
+  const bottles = [
+    [0.12, 0.35, 0.25, 1.0, '#2a7fd4', '190,225,255'],
+    [0.31, 0.7, -0.4, 0.85, '#d9382c', '215,240,230'],
+    [0.47, 0.25, 3.5, 1.1, '#f2f2f2', '200,235,255'],
+    [0.63, 0.6, 0.15, 0.9, '#3fae4a', '180,240,200'],
+    [0.78, 0.3, -0.7, 1.05, '#2a7fd4', '195,225,255'],
+    [0.9, 0.75, 2.9, 0.8, '#e8a21b', '225,240,225'],
+  ];
+  const sc = Math.max(0.8, Math.min(1.5, H / 650));
+  for (const [fx, fy, rot, size, cap, tint] of bottles) {
+    drawBottle(s, fx * W, 30 + fy * (sandCanvas.height - 60), rot, size * sc, cap, tint);
+  }
+}
+
+function drawBottle(s, x, y, rot, size, cap, tint) {
+  s.save();
+  s.translate(x, y); s.rotate(rot); s.scale(size, size);
+  // shadow on the sand
+  s.fillStyle = 'rgba(40,35,15,.3)';
+  s.beginPath(); s.ellipse(2, 9, 34, 6, 0, 0, 7); s.fill();
+  // body + neck as one see-through plastic shape
+  const g = s.createLinearGradient(0, -10, 0, 10);
+  g.addColorStop(0, `rgba(${tint},.75)`);
+  g.addColorStop(0.5, `rgba(${tint},.3)`);
+  g.addColorStop(1, `rgba(${tint},.55)`);
+  s.fillStyle = g;
+  s.beginPath();
+  s.moveTo(-30, -8);
+  s.lineTo(8, -8);
+  s.quadraticCurveTo(20, -8, 24, -3);
+  s.lineTo(28, -3); s.lineTo(28, 3); s.lineTo(24, 3);
+  s.quadraticCurveTo(20, 8, 8, 8);
+  s.lineTo(-30, 8);
+  s.quadraticCurveTo(-34, 0, -30, -8);
+  s.closePath(); s.fill();
+  s.strokeStyle = 'rgba(255,255,255,.55)'; s.lineWidth = 1; s.stroke();
+  // ridges
+  s.strokeStyle = 'rgba(255,255,255,.4)';
+  for (let i = 0; i < 3; i++) {
+    s.beginPath(); s.moveTo(-24 + i * 5, -8); s.lineTo(-24 + i * 5, 8); s.stroke();
+  }
+  // label band
+  s.fillStyle = 'rgba(255,255,255,.55)';
+  s.fillRect(-8, -8, 14, 16);
+  s.fillStyle = cap;
+  s.fillRect(-8, -8, 14, 4);
+  // cap
+  s.fillRect(28, -4, 5, 8);
+  // shine
+  s.fillStyle = 'rgba(255,255,255,.55)';
+  s.fillRect(-28, -6, 34, 2);
+  s.restore();
 }
 
 /* ---------- mouse ---------- */
@@ -78,8 +132,8 @@ function updateDiver(dt) {
   const tx = mouse.x;
   const ty = Math.min(mouse.y, floorY - 50);
   const dx = tx - diver.x, dy = ty - diver.y;
-  diver.vx += dx * 1.4 * dt; diver.vy += dy * 1.4 * dt;
-  const damp = Math.pow(0.06, dt);
+  diver.vx += dx * 4.2 * dt; diver.vy += dy * 4.2 * dt;
+  const damp = Math.pow(0.03, dt);
   diver.vx *= damp; diver.vy *= damp;
   diver.x += diver.vx * dt; diver.y += diver.vy * dt;
   diver.y = Math.min(diver.y, floorY - 40);
