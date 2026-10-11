@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Green Ocean</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #062a22; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="sea"></canvas>
+<script>
+const cv = document.getElementById('sea');
+const ctx = cv.getContext('2d');
+let W, H, floorY, dpr;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  floorY = H * 0.82;
+  buildSand();
+}
+
+/* ---------- sand (drawn once, reused) ---------- */
+let sandCanvas;
+function buildSand() {
+  sandCanvas = document.createElement('canvas');
+  sandCanvas.width = W; sandCanvas.height = Math.ceil(H - floorY + 40);
+  const s = sandCanvas.getContext('2d');
+  const g = s.createLinearGradient(0, 0, 0, sandCanvas.height);
+  g.addColorStop(0, '#9fb98a');
+  g.addColorStop(0.15, '#c9c49a');
+  g.addColorStop(1, '#8e8a62');
+  s.fillStyle = g;
+  s.beginPath();
+  s.moveTo(0, 20);
+  for (let x = 0; x <= W; x += 10) {
+    s.lineTo(x, 14 + Math.sin(x * 0.006) * 8 + Math.sin(x * 0.019 + 1) * 3);
+  }
+  s.lineTo(W, sandCanvas.height); s.lineTo(0, sandCanvas.height);
+  s.closePath(); s.fill();
+  // soft ripples
+  s.globalAlpha = 0.13;
+  for (let r = 0; r < 9; r++) {
+    const y = 40 + r * ((sandCanvas.height - 50) / 9);
+    s.strokeStyle = r % 2 ? '#fff' : '#5b573a';
+    s.lineWidth = 2 + r * 0.3;
+    s.beginPath();
+    for (let x = 0; x <= W; x += 8) {
+      const yy = y + Math.sin(x * 0.012 + r * 1.7) * (3 + r * 0.6);
+      x ? s.lineTo(x, yy) : s.moveTo(x, yy);
+    }
+    s.stroke();
+  }
+  // fine grain
+  s.globalAlpha = 0.05;
+  for (let i = 0; i < W * 2; i++) {
+    s.fillStyle = Math.random() < 0.5 ? '#fff' : '#3a3820';
+    s.fillRect(Math.random() * W, 20 + Math.random() * (sandCanvas.height - 20), 1.5, 1.5);
+  }
+}
+
+/* ---------- mouse ---------- */
+const mouse = { x: 0, y: 0 };
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener('touchmove', e => {
+  mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY;
+}, { passive: true });
+
+/* ---------- diver ---------- */
+const diver = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, face: 1, kick: 0 };
+
+function updateDiver(dt) {
+  const tx = mouse.x;
+  const ty = Math.min(mouse.y, floorY - 50);
+  const dx = tx - diver.x, dy = ty - diver.y;
+  diver.vx += dx * 1.4 * dt; diver.vy += dy * 1.4 * dt;
+  const damp = Math.pow(0.06, dt);
+  diver.vx *= damp; diver.vy *= damp;
+  diver.x += diver.vx * dt; diver.y += diver.vy * dt;
+  diver.y = Math.min(diver.y, floorY - 40);
+  diver.x = Math.max(40, Math.min(W - 40, diver.x));
+  const speed = Math.hypot(diver.vx, diver.vy);
+  if (Math.abs(diver.vx) > 12) diver.face += ((diver.vx > 0 ? 1 : -1) - diver.face) * Math.min(1, dt * 6);
+  // body leans in the direction of travel; hangs a little tilted when still
+  const target = Math.atan2(diver.vy, Math.abs(diver.vx) + 60) * 0.9;
+  diver.angle += (target - diver.angle) * Math.min(1, dt * 5);
+  diver.kick += dt * (3 + speed * 0.025);
+}
+
+function drawDiver(t) {
+  const bob = Math.sin(t * 1.6) * 3;
+  ctx.save();
+  ctx.translate(diver.x, diver.y + bob);
+  ctx.rotate(diver.angle * diver.face);
+  ctx.scale(diver.face, 1);
+  const k = Math.sin(diver.kick);
+  const k2 = Math.sin(diver.kick + 1.4);
+  const sc = Math.max(0.8, Math.min(1.5, H / 650));
+  ctx.scale(sc, sc);
+
+  // soft shadow-ish water tint so the diver sits in the water
+  // back leg + flipper
+  leg(-18, 3, k2, '#10171c', '#1d6f8a');
+  // air tank
+  ctx.fillStyle = '#9aa7ad';
+  roundRect(-12, -17, 30, 13, 6); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.35)';
+  roundRect(-9, -15, 22, 3, 2); ctx.fill();
+  // torso
+  const tg = ctx.createLinearGradient(0, -14, 0, 14);
+  tg.addColorStop(0, '#2c3a44'); tg.addColorStop(1, '#10181d');
+  ctx.fillStyle = tg;
+  roundRect(-24, -12, 50, 24, 12); ctx.fill();
+  // yellow stripe
+  ctx.fillStyle = '#e9b824';
+  roundRect(-8, -12, 6, 24, 2); ctx.fill();
+  // front leg + flipper
+  leg(-18, -3, k, '#161f25', '#2bb3c4');
+  // back arm
+  arm(14, 4, -0.2 + k2 * 0.15, '#10171c');
+  // head
+  ctx.fillStyle = '#d6a47c';
+  ctx.beginPath(); ctx.arc(34, -3, 9, 0, 7); ctx.fill();
+  // hood
+  ctx.fillStyle = '#10181d';
+  ctx.beginPath(); ctx.arc(32, -4, 9.5, Math.PI * 0.55, Math.PI * 1.75); ctx.fill();
+  // mask
+  ctx.fillStyle = '#0b1115';
+  roundRect(35, -9, 12, 10, 4); ctx.fill();
+  const mg = ctx.createLinearGradient(37, -8, 45, -1);
+  mg.addColorStop(0, 'rgba(150,235,240,.95)'); mg.addColorStop(1, 'rgba(60,150,170,.9)');
+  ctx.fillStyle = mg;
+  roundRect(37, -8, 9, 7, 3); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.6)';
+  ctx.beginPath(); ctx.ellipse(40, -6, 2, 1, -0.5, 0, 7); ctx.fill();
+  // regulator
+  ctx.strokeStyle = '#d4d9db'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(24, -10); ctx.quadraticCurveTo(34, -22, 44, 2); ctx.stroke();
+  // front arm
+  arm(16, -2, 0.3 + k * 0.15, '#1b252b');
+  ctx.restore();
+}
+
+function leg(x, y, swing, suit, fin) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(swing * 0.35);
+  ctx.fillStyle = suit;
+  roundRect(-26, -4, 28, 8, 4); ctx.fill();
+  ctx.translate(-26, 0);
+  ctx.rotate(swing * 0.4);
+  ctx.fillStyle = suit;
+  roundRect(-18, -3.5, 20, 7, 3.5); ctx.fill();
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(-16, -3); ctx.lineTo(-40, -11); ctx.quadraticCurveTo(-45, 0, -40, 11);
+  ctx.lineTo(-16, 3); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function arm(x, y, a, col) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a);
+  ctx.fillStyle = col;
+  roundRect(0, -3.5, 24, 7, 3.5); ctx.fill();
+  ctx.fillStyle = '#d6a47c';
+  ctx.beginPath(); ctx.arc(26, 0, 3.4, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ---------- bubbles ---------- */
+const bubbles = [];
+let bubbleTimer = 0;
+function emitBubbles(dt) {
+  bubbleTimer -= dt;
+  if (bubbleTimer > 0) return;
+  bubbleTimer = 0.25 + Math.random() * 0.35;
+  const sc = Math.max(0.8, Math.min(1.5, H / 650));
+  const a = diver.angle * diver.face;
+  const mx = 44 * sc, my = -2 * sc;
+  const px = diver.x + diver.face * (mx * Math.cos(a) - my * Math.sin(a));
+  const py = diver.y + (mx * Math.sin(a) + my * Math.cos(a)) - 6;
+  const n = 1 + (Math.random() * 3 | 0);
+  for (let i = 0; i < n; i++) {
+    bubbles.push({
+      x: px + (Math.random() - 0.5) * 6, y: py + (Math.random() - 0.5) * 4,
+      r: 1.5 + Math.random() * 4.5, vy: 30 + Math.random() * 40,
+      ph: Math.random() * 6.28, wob: 0.8 + Math.random() * 1.6,
+    });
+  }
+}
+function updateBubbles(dt, t) {
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    b.y -= b.vy * dt * (1 + b.r * 0.08);
+    b.x += Math.sin(t * b.wob + b.ph) * 14 * dt;
+    if (b.y < -10) bubbles.splice(i, 1);
+  }
+}
+function drawBubbles() {
+  for (const b of bubbles) {
+    const g = ctx.createRadialGradient(b.x - b.r * 0.35, b.y - b.r * 0.35, b.r * 0.1, b.x, b.y, b.r);
+    g.addColorStop(0, 'rgba(255,255,255,.75)');
+    g.addColorStop(0.6, 'rgba(190,255,235,.12)');
+    g.addColorStop(1, 'rgba(210,255,245,.45)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(235,255,250,.5)'; ctx.lineWidth = 0.7; ctx.stroke();
+  }
+}
+
+/* ---------- water, rays, specks ---------- */
+const rays = Array.from({ length: 9 }, (_, i) => ({
+  x: (i + 0.5) / 9, w: 0.05 + Math.random() * 0.08, sp: 0.15 + Math.random() * 0.25,
+  ph: Math.random() * 6.28, a: 0.08 + Math.random() * 0.1,
+}));
+const specks = Array.from({ length: 90 }, () => ({
+  x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.4,
+  sp: 3 + Math.random() * 8, ph: Math.random() * 6.28,
+}));
+
+function drawWater(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#5fd1a6');
+  g.addColorStop(0.35, '#1f9b78');
+  g.addColorStop(0.75, '#0b5e4c');
+  g.addColorStop(1, '#073c33');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // bright glow under the surface
+  const sg = ctx.createRadialGradient(W * 0.5, -H * 0.1, 10, W * 0.5, -H * 0.1, H * 0.9);
+  sg.addColorStop(0, 'rgba(230,255,225,.55)');
+  sg.addColorStop(1, 'rgba(230,255,225,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+}
+
+function drawRays(t) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const slant = H * 0.22;
+  for (const r of rays) {
+    const sway = Math.sin(t * r.sp + r.ph);
+    const x0 = r.x * W * 1.15 - W * 0.1 + sway * 40;
+    const w0 = r.w * W * (0.8 + 0.3 * Math.sin(t * r.sp * 1.3 + r.ph));
+    const x1 = x0 - slant + sway * 30;
+    const w1 = w0 * 2.4;
+    const y1 = floorY + 10;
+    const fade = 0.55 + 0.45 * Math.sin(t * r.sp * 1.7 + r.ph * 2);
+    const g = ctx.createLinearGradient(0, 0, 0, y1);
+    g.addColorStop(0, `rgba(255,255,220,${r.a * fade * 1.5})`);
+    g.addColorStop(0.6, `rgba(210,255,225,${r.a * fade * 0.5})`);
+    g.addColorStop(1, 'rgba(210,255,225,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x0 - w0 / 2, 0); ctx.lineTo(x0 + w0 / 2, 0);
+    ctx.lineTo(x1 + w1 / 2, y1); ctx.lineTo(x1 - w1 / 2, y1);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSpecks(t) {
+  ctx.fillStyle = 'rgba(220,255,235,.35)';
+  for (const s of specks) {
+    const x = ((s.x * W + Math.sin(t * 0.3 + s.ph) * 20 + t * 2) % W + W) % W;
+    const y = ((s.y * floorY - t * s.sp * 0.4) % floorY + floorY) % floorY;
+    ctx.globalAlpha = 0.3 + 0.4 * Math.abs(Math.sin(t + s.ph));
+    ctx.beginPath(); ctx.arc(x, y, s.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawSurface(t) {
+  // wavy bright band at the very top
+  ctx.save();
+  ctx.fillStyle = 'rgba(240,255,235,.5)';
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  for (let x = 0; x <= W; x += 12) {
+    ctx.lineTo(x, 10 + Math.sin(x * 0.02 + t * 1.2) * 4 + Math.sin(x * 0.047 - t * 0.8) * 3);
+  }
+  ctx.lineTo(W, 0); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawFloor(t) {
+  ctx.drawImage(sandCanvas, 0, floorY - 14);
+  // rays landing as a glow on the sand
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const r of rays) {
+    const sway = Math.sin(t * r.sp + r.ph);
+    const cx = r.x * W * 1.15 - W * 0.1 - H * 0.22 + sway * 70;
+    const fade = 0.55 + 0.45 * Math.sin(t * r.sp * 1.7 + r.ph * 2);
+    const rw = r.w * W * 1.4;
+    const g = ctx.createRadialGradient(cx, floorY + 30, 4, cx, floorY + 30, rw);
+    g.addColorStop(0, `rgba(255,255,210,${0.16 * fade})`);
+    g.addColorStop(1, 'rgba(255,255,210,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - rw, floorY - 20, rw * 2, H - floorY + 20);
+  }
+  ctx.restore();
+  // water haze over the far edge of the sand
+  const hg = ctx.createLinearGradient(0, floorY - 10, 0, floorY + 60);
+  hg.addColorStop(0, 'rgba(10,90,70,.5)'); hg.addColorStop(1, 'rgba(10,90,70,0)');
+  ctx.fillStyle = hg; ctx.fillRect(0, floorY - 10, W, 70);
+}
+
+function drawDepthTint() {
+  // darker corners give depth
+  const g = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,25,20,0)');
+  g.addColorStop(1, 'rgba(0,25,20,.45)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+/* ---------- loop ---------- */
+let last = performance.now(), T = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
+  updateDiver(dt); emitBubbles(dt); updateBubbles(dt, T);
+
+  drawWater(T);
+  drawRays(T);
+  drawSpecks(T);
+  drawFloor(T);
+  drawDiver(T);
+  drawBubbles();
+  drawSurface(T);
+  drawDepthTint();
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+resize();
+mouse.x = W * 0.35; mouse.y = H * 0.45;
+diver.x = mouse.x; diver.y = mouse.y;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
