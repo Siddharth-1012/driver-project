@@ -62,72 +62,6 @@ function buildSand() {
     s.fillStyle = Math.random() < 0.5 ? '#fff' : '#3a3820';
     s.fillRect(Math.random() * W, 20 + Math.random() * (sandCanvas.height - 20), 1.5, 1.5);
   }
-  s.globalAlpha = 1;
-  // plastic bottles lying on the sand: [x fraction, depth fraction, tilt, size, cap colour, plastic tint]
-  const bottles = [
-    [0.12, 0.35, 0.25, 1.0, '#2a7fd4', '190,225,255'],
-    [0.31, 0.7, -0.4, 0.85, '#d9382c', '215,240,230'],
-    [0.47, 0.25, 3.5, 1.1, '#f2f2f2', '200,235,255'],
-    [0.63, 0.6, 0.15, 0.9, '#3fae4a', '180,240,200'],
-    [0.78, 0.3, -0.7, 1.05, '#2a7fd4', '195,225,255'],
-    [0.9, 0.75, 2.9, 0.8, '#e8a21b', '225,240,225'],
-  ];
-  // 100 more, placed with a fixed seed so they stay put on resize
-  let seed = 7;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const caps = ['#2a7fd4', '#d9382c', '#f2f2f2', '#3fae4a', '#e8a21b', '#8a4fc7'];
-  const tints = ['190,225,255', '215,240,230', '200,235,255', '180,240,200', '225,240,225'];
-  for (let i = 0; i < 100; i++) {
-    bottles.push([
-      rnd(), rnd(), rnd() * 6.28, 0.7 + rnd() * 0.5,
-      caps[(rnd() * caps.length) | 0], tints[(rnd() * tints.length) | 0],
-    ]);
-  }
-  bottles.sort((a, b) => a[1] - b[1]); // farther ones first, nearer ones overlap them
-  const sc = Math.max(0.8, Math.min(1.5, H / 650));
-  for (const [fx, fy, rot, size, cap, tint] of bottles) {
-    drawBottle(s, fx * W, 30 + fy * (sandCanvas.height - 60), rot, size * sc, cap, tint);
-  }
-}
-
-function drawBottle(s, x, y, rot, size, cap, tint) {
-  s.save();
-  s.translate(x, y); s.rotate(rot); s.scale(size, size);
-  // shadow on the sand
-  s.fillStyle = 'rgba(40,35,15,.3)';
-  s.beginPath(); s.ellipse(2, 9, 34, 6, 0, 0, 7); s.fill();
-  // body + neck as one see-through plastic shape
-  const g = s.createLinearGradient(0, -10, 0, 10);
-  g.addColorStop(0, `rgba(${tint},.75)`);
-  g.addColorStop(0.5, `rgba(${tint},.3)`);
-  g.addColorStop(1, `rgba(${tint},.55)`);
-  s.fillStyle = g;
-  s.beginPath();
-  s.moveTo(-30, -8);
-  s.lineTo(8, -8);
-  s.quadraticCurveTo(20, -8, 24, -3);
-  s.lineTo(28, -3); s.lineTo(28, 3); s.lineTo(24, 3);
-  s.quadraticCurveTo(20, 8, 8, 8);
-  s.lineTo(-30, 8);
-  s.quadraticCurveTo(-34, 0, -30, -8);
-  s.closePath(); s.fill();
-  s.strokeStyle = 'rgba(255,255,255,.55)'; s.lineWidth = 1; s.stroke();
-  // ridges
-  s.strokeStyle = 'rgba(255,255,255,.4)';
-  for (let i = 0; i < 3; i++) {
-    s.beginPath(); s.moveTo(-24 + i * 5, -8); s.lineTo(-24 + i * 5, 8); s.stroke();
-  }
-  // label band
-  s.fillStyle = 'rgba(255,255,255,.55)';
-  s.fillRect(-8, -8, 14, 16);
-  s.fillStyle = cap;
-  s.fillRect(-8, -8, 14, 4);
-  // cap
-  s.fillRect(28, -4, 5, 8);
-  // shine
-  s.fillStyle = 'rgba(255,255,255,.55)';
-  s.fillRect(-28, -6, 34, 2);
-  s.restore();
 }
 
 /* ---------- mouse ---------- */
@@ -247,6 +181,72 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+/* ---------- sharks (20, circling the diver) ---------- */
+const sharks = Array.from({ length: 20 }, (_, i) => ({
+  a: (i / 20) * 6.283 + Math.random() * 0.3,        // position around the diver
+  r: 110 + Math.random() * 230,                     // distance from the diver
+  sp: (0.5 + Math.random() * 0.6) * (i % 2 ? 1 : -1), // circling speed and direction
+  ph: Math.random() * 6.28,
+  size: 0.8 + Math.random() * 0.7,
+  x: 0, y: 0, dir: 0, started: false,
+}));
+
+function updateSharks(dt, t) {
+  for (const s of sharks) {
+    s.a += s.sp * dt;
+    const rr = s.r + Math.sin(t * 0.7 + s.ph) * 25;
+    const tx = diver.x + Math.cos(s.a) * rr * 1.25;
+    const ty = Math.min(diver.y + Math.sin(s.a) * rr * 0.7, floorY - 25);
+    if (!s.started) { s.x = tx; s.y = ty; s.started = true; }
+    const px = s.x, py = s.y;
+    s.x += (tx - s.x) * Math.min(1, dt * 4);
+    s.y += (ty - s.y) * Math.min(1, dt * 4);
+    const mx = s.x - px, my = s.y - py;
+    if (Math.hypot(mx, my) > 0.05) {
+      let d = Math.atan2(my, mx) - s.dir;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      s.dir += d * Math.min(1, dt * 6);
+    }
+  }
+}
+
+function drawShark(s, t) {
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(s.dir);
+  const flip = Math.cos(s.dir) < 0;      // keep the shark right-side up
+  if (flip) ctx.scale(1, -1);
+  const k = s.size * Math.max(0.8, Math.min(1.4, H / 650));
+  ctx.scale(k, k);
+  const sw = Math.sin(t * 5 + s.ph) * 5;  // tail sway
+  const g = ctx.createLinearGradient(0, -14, 0, 14);
+  g.addColorStop(0, '#5b6c76'); g.addColorStop(0.55, '#8c9ba3'); g.addColorStop(1, '#e6eceb');
+  ctx.fillStyle = g;
+  // body
+  ctx.beginPath();
+  ctx.moveTo(46, 0);
+  ctx.quadraticCurveTo(30, -14, 0, -13);
+  ctx.quadraticCurveTo(-26, -9, -44 + sw * 0.4, sw * 0.6);
+  ctx.lineTo(-62 + sw, sw * 1.4 - 15);       // upper tail lobe
+  ctx.lineTo(-54 + sw * 0.8, sw * 1.1);
+  ctx.lineTo(-64 + sw, sw * 1.4 + 11);       // lower tail lobe
+  ctx.lineTo(-44 + sw * 0.4, sw * 0.6 + 2);
+  ctx.quadraticCurveTo(-24, 9, 0, 12);
+  ctx.quadraticCurveTo(30, 13, 46, 0);
+  ctx.closePath(); ctx.fill();
+  // dorsal fin
+  ctx.fillStyle = '#566670';
+  ctx.beginPath(); ctx.moveTo(6, -12); ctx.lineTo(-8, -30); ctx.lineTo(-16, -11); ctx.closePath(); ctx.fill();
+  // side fin
+  ctx.beginPath(); ctx.moveTo(14, 8); ctx.lineTo(-6, 24); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
+  // gills + eye
+  ctx.strokeStyle = 'rgba(40,55,62,.6)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(18 - i * 3, -5); ctx.lineTo(17 - i * 3, 4); ctx.stroke(); }
+  ctx.fillStyle = '#0b1115';
+  ctx.beginPath(); ctx.arc(34, -3, 1.8, 0, 7); ctx.fill();
+  ctx.restore();
 }
 
 /* ---------- bubbles ---------- */
@@ -398,12 +398,13 @@ function drawDepthTint() {
 let last = performance.now(), T = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
-  updateDiver(dt); emitBubbles(dt); updateBubbles(dt, T);
+  updateDiver(dt); updateSharks(dt, T); emitBubbles(dt); updateBubbles(dt, T);
 
   drawWater(T);
   drawRays(T);
   drawSpecks(T);
   drawFloor(T);
+  for (const s of sharks) drawShark(s, T);
   drawDiver(T);
   drawBubbles();
   drawSurface(T);
